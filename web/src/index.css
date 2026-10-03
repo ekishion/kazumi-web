@@ -1,0 +1,136 @@
+@import "tailwindcss";
+
+/* ==========================================================================
+   MiSans：原版随包字体（Kazumi/assets/fonts/MiSans-Regular.ttf）
+   原版 ThemeData(fontFamily: 'MI_Sans_Regular')，Web 侧必须显式加载，
+   否则会回退到系统字体（Windows 上是微软雅黑），导致排版与原版不一致。
+   ========================================================================== */
+@font-face {
+  font-family: 'MiSans';
+  src: url('/fonts/MiSans-Regular.ttf') format('truetype');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  font-family: 'MiSans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+    'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+  user-select: none;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+/* 滚动条：细、半透明，贴近移动端观感 */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(128, 128, 128, 0.25);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(128, 128, 128, 0.45);
+}
+
+/* 每页独立滚动容器（原版每个页面有自己的 ScrollController，滚动位置互不影响） */
+.kz-scroll {
+  height: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ==========================================================================
+   路由过渡：对齐原版 pageTransitionsTheme2024
+   - 桌面（Windows/Linux）→ FadeUpwardsPageTransitionsBuilder：淡入 + 上移
+   - 移动 → CupertinoPageTransitionsBuilder：水平滑入
+   ========================================================================== */
+@keyframes kz-page-fade-upwards {
+  from {
+    opacity: 0;
+    transform: translateY(2.5%);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes kz-page-slide-in {
+  from {
+    opacity: 0.7;
+    transform: translateX(24%);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.kz-route-fade-upwards {
+  animation: kz-page-fade-upwards 300ms cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+.kz-route-slide-in {
+  animation: kz-page-slide-in 300ms cubic-bezier(0.32, 0.72, 0, 1) both;
+}
+
+/* 底部导航的 4 个标签页之间：原版 _tabTransition 仅 70ms 淡入 */
+@keyframes kz-tab-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.kz-tab-fade {
+  animation: kz-tab-fade 70ms linear both;
+}
+
+/* 图片淡入：对齐 cached_network_image 的默认淡入 */
+.kz-img {
+  opacity: 0;
+  transition: opacity 300ms cubic-bezier(0.2, 0, 0, 1);
+}
+.kz-img-loaded {
+  opacity: 1;
+}
+
+/* 主题色过渡：Flutter MaterialApp 用 AnimatedTheme 做约 200ms 色彩过渡。
+   切换主题时临时挂上该类，避免全站常驻 transition 带来的性能损耗。 */
+.kz-theme-transition,
+.kz-theme-transition *,
+.kz-theme-transition *::before,
+.kz-theme-transition *::after {
+  transition:
+    background-color 200ms cubic-bezier(0.2, 0, 0, 1),
+    color 200ms cubic-bezier(0.2, 0, 0, 1),
+    border-color 200ms cubic-bezier(0.2, 0, 0, 1),
+    fill 200ms cubic-bezier(0.2, 0, 0, 1),
+    box-shadow 200ms cubic-bezier(0.2, 0, 0, 1) !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kz-route-fade-upwards,
+  .kz-tab-fade {
+    animation: none !important;
+  }
+  .kz-img {
+    transition: none !important;
+  }
+}
