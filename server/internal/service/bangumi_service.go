@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 	"sync"
 	"time"
 )
@@ -20,6 +21,15 @@ type BangumiService struct {
 	client *http.Client
 	cache  map[string]cacheEntry
 	mu     sync.RWMutex
+}
+
+// MirrorPingResult 镜像测活结果
+type MirrorPingResult struct {
+	Success   bool   `json:"success"`
+	Status    int    `json:"status"`
+	LatencyMs int64  `json:"latency"`
+	Endpoint  string `json:"endpoint"`
+	Message   string `json:"message"`
 }
 
 func NewBangumiService() *BangumiService {
@@ -46,7 +56,7 @@ func (s *BangumiService) fetchWithCache(ctx context.Context, targetURL string, t
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("User-Agent", "KazumiWeb/1.0 (https://github.com/Predidit/Kazumi)")
+	req.Header.Set("User-Agent", "KazumiWeb/1.0 (https://github.com/ekishion/Kazumi-web)")
 	req.Header.Set("Accept", "application/json")
 
 	resp, err := s.client.Do(req)
@@ -74,14 +84,108 @@ func (s *BangumiService) fetchWithCache(ctx context.Context, targetURL string, t
 	return body, nil
 }
 
+const bangumiAPIDomain = "https://api.bgm.tv"
+
+// normalizeBaseURL 规范化用户输入的镜像地址：
+// 去除两端空白和尾部斜杠；如果用户未显式输入协议头（如只输入 example.com），自动补齐 https://。
+func normalizeBaseURL(input string) string {
+	base := strings.TrimRight(strings.TrimSpace(input), "/")
+	if base == "" {
+		return ""
+	}
+	if !strings.HasPrefix(base, "http://") && !strings.HasPrefix(base, "https://") {
+		base = "https://" + base
+	}
+	return base
+}
+
+// resolveEndpoint 根据用户配置的镜像地址计算完整 URL。
+// 用户未配置镜像时，始终使用官方 https://api.bgm.tv。
+func resolveEndpoint(mirror, path string) string {
+	base := normalizeBaseURL(mirror)
+	if base == "" {
+		base = bangumiAPIDomain
+	}
+	if !strings.HasPrefix(path, "/") {
+		path = "/" + path
+	}
+	return base + path
+}
+
+// PingMirror 对用户输入的镜像进行连通性测活
+func (s *BangumiService) PingMirror(ctx context.Context, mirror string) *MirrorPingResult {
+	targetBase := normalizeBaseURL(mirror)
+	if targetBase == "" {
+		targetBase = bangumiAPIDomain
+	}
+	pingURL := targetBase + "/calendar"
+
+	start := time.Now()
+	pingCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(pingCtx, "GET", pingURL, nil)
+	if err != nil {
+		return &MirrorPingResult{
+			Success:   false,
+			Status:    0,
+			LatencyMs: time.Since(start).Milliseconds(),
+			Endpoint:  targetBase,
+			Message:   fmt.Sprintf("创建请求失败: %v", err),
+		}
+	}
+	req.Header.Set("User-Agent", "KazumiWeb/1.0 (https://github.com/ekishion/Kazumi-web)")
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := s.client.Do(req)
+	latency := time.Since(start).Milliseconds()
+	if err != nil {
+		return &MirrorPingResult{
+			Success:   false,
+			Status:    0,
+			LatencyMs: latency,
+			Endpoint:  targetBase,
+			Message:   fmt.Sprintf("连接失败: %v", err),
+		}
+	}
+	defer resp.Body.Close()
+
+	success := resp.StatusCode >= 200 && resp.StatusCode < 400
+	msg := fmt.Sprintf("HTTP %d OK", resp.StatusCode)
+	if !success {
+		msg = fmt.Sprintf("HTTP 异常状态 %d", resp.StatusCode)
+	}
+
+	return &MirrorPingResult{
+		Success:   success,
+		Status:    resp.StatusCode,
+		LatencyMs: latency,
+		Endpoint:  targetBase,
+		Message:   msg,
+	}
+}
+
 // GetCalendar 获取放送日历（新番时间表）
-func (s *BangumiService) GetCalendar(ctx context.Context) (any, error) {
-	// 优先请求标准的 api.bgm.tv/calendar
-	data, err := s.fetchWithCache(ctx, "https://api.bgm.tv/calendar", 2*time.Hour)
+func (s *BangumiService) GetCalendar(ctx context.Context, mirror string) (any, error) {
+	// 优先请求指定镜像或官方 API
+	targetURL := resolveEndpoint(mirror, "/calendar")
+	data, err := s.fetchWithCache(ctx, targetURL, 2*time.Hour)
 	if err == nil && len(data) > 0 {
 		var res any
 		if jsonErr := json.Unmarshal(data, &res); jsonErr == nil {
 			return res, nil
+		}
+	}
+
+	// 若使用了自定义镜像失败，可尝试回退一次官方
+	if mirror != "" {
+		officialURL := resolveEndpoint("", "/calendar")
+		data, err = s.fetchWithCache(ctx, officialURL, 2*time.Hour)
+		if err == nil && len(data) > 0 {
+			var res any
+			if jsonErr := json.Unmarshal(data, &res); jsonErr == nil {
+				return res, nil
+			}
 		}
 	}
 
@@ -90,9 +194,13 @@ func (s *BangumiService) GetCalendar(ctx context.Context) (any, error) {
 }
 
 // GetSubjectDetail 获取番剧详情
-func (s *BangumiService) GetSubjectDetail(ctx context.Context, subjectID string) (any, error) {
-	apiURL := fmt.Sprintf("https://api.bgm.tv/v0/subjects/%s", subjectID)
-	data, err := s.fetchWithCache(ctx, apiURL, 24*time.Hour)
+func (s *BangumiService) GetSubjectDetail(ctx context.Context, subjectID, mirror string) (any, error) {
+	targetURL := resolveEndpoint(mirror, "/v0/subjects/"+subjectID)
+	data, err := s.fetchWithCache(ctx, targetURL, 24*time.Hour)
+	if err != nil && mirror != "" {
+		// 备选官方
+		data, err = s.fetchWithCache(ctx, resolveEndpoint("", "/v0/subjects/"+subjectID), 24*time.Hour)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -102,9 +210,12 @@ func (s *BangumiService) GetSubjectDetail(ctx context.Context, subjectID string)
 }
 
 // GetSubjectCharacters 获取番剧角色
-func (s *BangumiService) GetSubjectCharacters(ctx context.Context, subjectID string) (any, error) {
-	apiURL := fmt.Sprintf("https://api.bgm.tv/v0/subjects/%s/characters", subjectID)
-	data, err := s.fetchWithCache(ctx, apiURL, 24*time.Hour)
+func (s *BangumiService) GetSubjectCharacters(ctx context.Context, subjectID, mirror string) (any, error) {
+	targetURL := resolveEndpoint(mirror, "/v0/subjects/"+subjectID+"/characters")
+	data, err := s.fetchWithCache(ctx, targetURL, 24*time.Hour)
+	if err != nil && mirror != "" {
+		data, err = s.fetchWithCache(ctx, resolveEndpoint("", "/v0/subjects/"+subjectID+"/characters"), 24*time.Hour)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -114,9 +225,13 @@ func (s *BangumiService) GetSubjectCharacters(ctx context.Context, subjectID str
 }
 
 // SearchSubjects 搜索番剧
-func (s *BangumiService) SearchSubjects(ctx context.Context, keyword string) (any, error) {
-	apiURL := fmt.Sprintf("https://api.bgm.tv/search/subject/%s?type=2&responseGroup=large", url.PathEscape(keyword))
-	data, err := s.fetchWithCache(ctx, apiURL, 30*time.Minute)
+func (s *BangumiService) SearchSubjects(ctx context.Context, keyword, mirror string) (any, error) {
+	escaped := url.PathEscape(keyword)
+	targetURL := resolveEndpoint(mirror, "/search/subject/"+escaped+"?type=2&responseGroup=large")
+	data, err := s.fetchWithCache(ctx, targetURL, 30*time.Minute)
+	if err != nil && mirror != "" {
+		data, err = s.fetchWithCache(ctx, resolveEndpoint("", "/search/subject/"+escaped+"?type=2&responseGroup=large"), 30*time.Minute)
+	}
 	if err != nil {
 		return nil, err
 	}

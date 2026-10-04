@@ -30,6 +30,7 @@ import {
   Info,
   Layers,
   MessageSquare,
+  Network,
   Palette,
   PlayCircle,
   Puzzle,
@@ -66,7 +67,7 @@ import { formatDanmakuTimeOffset } from '../components/settings/danmakuTimeOffse
  * 颜色全部取自 `theme.m3` / `theme.palette`；卡片圆角 12、无描边无投影、条目间距 8。
  */
 
-type CategoryId = 'player' | 'danmaku' | 'appearance' | 'rules' | 'history' | 'about';
+type CategoryId = 'player' | 'danmaku' | 'network' | 'appearance' | 'rules' | 'history' | 'about';
 
 type SettingsCategory = {
   id: CategoryId;
@@ -102,6 +103,12 @@ const SETTINGS_GROUPS: { title: string; categories: SettingsCategory[] }[] = [
         label: '规则管理',
         description: '番剧资源规则',
         icon: <Puzzle size={18} />,
+      },
+      {
+        id: 'network',
+        label: '网络与镜像',
+        description: 'Bangumi 数据镜像与测活',
+        icon: <Network size={18} />,
       },
     ],
   },
@@ -288,6 +295,8 @@ export const SettingsPage: React.FC = () => {
     setDanmakuSpeed,
     danmakuOffset,
     setDanmakuOffset,
+    bangumiMirror,
+    setBangumiMirror,
   } = useAppStore();
 
   /** 原版 /settings 内嵌时默认进入「播放设置」（settings_page.dart `_categoryPath`） */
@@ -296,8 +305,17 @@ export const SettingsPage: React.FC = () => {
   const [aboutOpen, setAboutOpen] = useState(false);
   const [uaDialogOpen, setUaDialogOpen] = useState(false);
   const [refererDialogOpen, setRefererDialogOpen] = useState(false);
+  const [mirrorDialogOpen, setMirrorDialogOpen] = useState(false);
   const [tempUA, setTempUA] = useState('');
   const [tempReferer, setTempReferer] = useState('');
+  const [tempMirror, setTempMirror] = useState('');
+  const [pingLoading, setPingLoading] = useState(false);
+  const [pingResult, setPingResult] = useState<{
+    success: boolean;
+    status: number;
+    latency: number;
+    message: string;
+  } | null>(null);
   const [stats, setStats] = useState<{ bangumi: number; episodes: number } | null>(null);
 
   useEffect(() => {
@@ -563,6 +581,69 @@ export const SettingsPage: React.FC = () => {
     </>
   );
 
+  const normalizeMirrorUrl = (url: string) => {
+    const trimmed = url.trim();
+    if (!trimmed) return '';
+    if (!/^https?:\/\//i.test(trimmed)) {
+      return `https://${trimmed}`;
+    }
+    return trimmed;
+  };
+
+  /* ---------------------------- 详情：网络与镜像 ---------------------------- */
+  const handlePing = async (targetUrl: string) => {
+    setPingLoading(true);
+    setPingResult(null);
+    try {
+      const normalized = normalizeMirrorUrl(targetUrl);
+      const res = await apiService.pingBangumiMirror(normalized);
+      setPingResult(res);
+    } catch (err: any) {
+      setPingResult({
+        success: false,
+        status: 0,
+        latency: 0,
+        message: err.message || '网络请求错误',
+      });
+    } finally {
+      setPingLoading(false);
+    }
+  };
+
+  const networkDetail = (
+    <>
+      <SettingsSection
+        title="Bangumi 镜像配置"
+        bottomInfo="由于部分网络环境可能存在 DNS 污染或 SNI 阻断，您可在此指定可用的 Bangumi 反向代理或镜像源；留空时默认直连官方 api.bgm.tv。"
+      >
+        <SettingsTile
+          leading={<Network size={20} />}
+          title="Bangumi 镜像地址"
+          description={bangumiMirror ? bangumiMirror : '未设置（直连官方 api.bgm.tv）'}
+          value={bangumiMirror ? '自定义' : '官方源'}
+          trailing={<ChevronRight size={20} />}
+          onClick={() => {
+            setTempMirror(bangumiMirror);
+            setPingResult(null);
+            setMirrorDialogOpen(true);
+          }}
+        />
+        <SettingsTile
+          leading={<Zap size={20} />}
+          title="镜像连通性测活"
+          description={
+            pingResult
+              ? `${pingResult.success ? '正常' : '不可达'} (${pingResult.latency}ms) - ${pingResult.message}`
+              : '测试当前配置的镜像或官方源端点是否可达'
+          }
+          value={pingLoading ? '测活中...' : '点击测活'}
+          trailing={<RefreshCw size={18} className={pingLoading ? 'animate-spin' : ''} />}
+          onClick={() => handlePing(bangumiMirror)}
+        />
+      </SettingsSection>
+    </>
+  );
+
   /* ---------------------------- 详情：外观设置 ---------------------------- */
   const appearanceDetail = (
     <>
@@ -655,6 +736,7 @@ export const SettingsPage: React.FC = () => {
 
               {selected === 'player' && playerDetail}
               {selected === 'danmaku' && danmakuDetail}
+              {selected === 'network' && networkDetail}
               {selected === 'appearance' && appearanceDetail}
             </Box>
           </Fade>
@@ -743,6 +825,63 @@ export const SettingsPage: React.FC = () => {
             onClick={() => {
               setCustomReferer(tempReferer.trim());
               setRefererDialogOpen(false);
+            }}
+          >
+            保存
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Bangumi 镜像配置对话框 */}
+      <Dialog
+        open={mirrorDialogOpen}
+        onClose={() => setMirrorDialogOpen(false)}
+        slotProps={{ paper: { sx: { minWidth: 320, maxWidth: 520 } } }}
+      >
+        <DialogTitle sx={{ fontWeight: 500 }}>设置 Bangumi 镜像地址</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" sx={{ color: theme.m3.onSurfaceVariant, mb: 2 }}>
+            输入您可用的 Bangumi 反向代理或镜像服务 Base URL（留空则默认使用官方官方源 https://api.bgm.tv）。
+          </Typography>
+          <TextField
+            fullWidth
+            size="small"
+            placeholder="例如: https://your-mirror.example.com"
+            value={tempMirror}
+            onChange={(e) => {
+              setTempMirror(e.target.value);
+              setPingResult(null);
+            }}
+          />
+          {pingResult && (
+            <Box
+              sx={{
+                mt: 2,
+                p: 1.5,
+                borderRadius: 2,
+                bgcolor: pingResult.success ? 'success.main' : 'error.main',
+                color: '#fff',
+                fontSize: 13,
+              }}
+            >
+              测活结果: {pingResult.message} ({pingResult.latency}ms)
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button
+            disabled={pingLoading}
+            onClick={() => handlePing(tempMirror)}
+            sx={{ mr: 'auto' }}
+          >
+            {pingLoading ? '测活中...' : '测试连通性'}
+          </Button>
+          <Button onClick={() => setMirrorDialogOpen(false)}>取消</Button>
+          <Button
+            onClick={() => {
+              const normalized = normalizeMirrorUrl(tempMirror);
+              setBangumiMirror(normalized);
+              setMirrorDialogOpen(false);
             }}
           >
             保存

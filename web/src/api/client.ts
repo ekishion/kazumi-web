@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { useAppStore } from '../stores/useAppStore';
 import type {
   Plugin,
   SearchItem,
@@ -15,6 +16,14 @@ const api = axios.create({
   baseURL: '/api',
   timeout: 20000,
 });
+
+export interface MirrorPingResult {
+  success: boolean;
+  status: number;
+  latency: number;
+  endpoint: string;
+  message: string;
+}
 
 export const apiService = {
   // 规则管理
@@ -41,13 +50,24 @@ export const apiService = {
     })),
 
   // Bangumi
-  getCalendar: () => api.get<CalendarDay[]>('/bangumi/calendar').then((r) => r.data || []),
-  getSubjectDetail: (id: string | number) =>
-    api.get<BangumiSubject>(`/bangumi/subject/${id}`).then((r) => r.data),
-  getSubjectCharacters: (id: string | number) =>
-    api.get<any[]>(`/bangumi/subject/${id}/characters`).then((r) => r.data || []),
-  searchBangumi: (keyword: string) =>
-    api.get<any>(`/bangumi/search`, { params: { keyword } }).then((r) => r.data || {}),
+  getCalendar: () => {
+    const mirror = useAppStore.getState().bangumiMirror;
+    return api.get<CalendarDay[]>('/bangumi/calendar', { params: mirror ? { mirror } : {} }).then((r) => r.data || []);
+  },
+  getSubjectDetail: (id: string | number) => {
+    const mirror = useAppStore.getState().bangumiMirror;
+    return api.get<BangumiSubject>(`/bangumi/subject/${id}`, { params: mirror ? { mirror } : {} }).then((r) => r.data);
+  },
+  getSubjectCharacters: (id: string | number) => {
+    const mirror = useAppStore.getState().bangumiMirror;
+    return api.get<any[]>(`/bangumi/subject/${id}/characters`, { params: mirror ? { mirror } : {} }).then((r) => r.data || []);
+  },
+  searchBangumi: (keyword: string) => {
+    const mirror = useAppStore.getState().bangumiMirror;
+    return api.get<any>(`/bangumi/search`, { params: { keyword, ...(mirror ? { mirror } : {}) } }).then((r) => r.data || {});
+  },
+  pingBangumiMirror: (mirror: string) =>
+    api.get<MirrorPingResult>('/bangumi/ping', { params: { mirror } }).then((r) => r.data),
 
   // 弹幕
   searchDanmakuEpisodes: (title: string) =>

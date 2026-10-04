@@ -37,12 +37,16 @@ interface AppState {
   customUserAgent: string;
   customReferer: string;
 
+  // 网络与镜像配置（持久化）
+  bangumiMirror: string;
+
   setAutoPlayNext: (enabled: boolean) => void;
   setAutoFailover: (enabled: boolean) => void;
   setAutoResniff: (enabled: boolean) => void;
   setLowLatencyMode: (enabled: boolean) => void;
   setCustomUserAgent: (ua: string) => void;
   setCustomReferer: (referer: string) => void;
+  setBangumiMirror: (mirror: string) => void;
 
   setAvailableSources: (sources: SearchItem[], activeSource?: SearchItem | null) => void;
   setCurrentSource: (source: SearchItem | null) => void;
@@ -98,12 +102,16 @@ export const useAppStore = create<AppState>()(
       customUserAgent: '',
       customReferer: '',
 
+      // 网络与镜像设置默认值（空表示使用官方源）
+      bangumiMirror: '',
+
       setAutoPlayNext: (autoPlayNext) => set({ autoPlayNext }),
       setAutoFailover: (autoFailover) => set({ autoFailover }),
       setAutoResniff: (autoResniff) => set({ autoResniff }),
       setLowLatencyMode: (lowLatencyMode) => set({ lowLatencyMode }),
       setCustomUserAgent: (customUserAgent) => set({ customUserAgent }),
       setCustomReferer: (customReferer) => set({ customReferer }),
+      setBangumiMirror: (bangumiMirror) => set({ bangumiMirror }),
 
       setAvailableSources: (sources, activeSource) => {
         set((state) => ({
@@ -152,9 +160,10 @@ export const useAppStore = create<AppState>()(
     }),
     {
       name: 'kazumi-web-storage',
-      version: 3,
+      version: 4,
       // v1 → v2：主题色改为 M3 种子色。旧的硬编码墨绿 #2E5B28 迁移为原版默认种子 #4CAF50。
       // v2 → v3：增加播放设置（自动换源、自动重嗅探、低延迟模式、自定义 UA/Referer）。
+      // v3 → v4：增加网络设置（自定义 Bangumi 镜像）。
       migrate: (persisted: unknown, version: number) => {
         const state = (persisted ?? {}) as Record<string, unknown>;
         if (version < 2 && (state.primaryColor === '#2E5B28' || !state.primaryColor)) {
@@ -166,6 +175,9 @@ export const useAppStore = create<AppState>()(
           if (state.lowLatencyMode === undefined) state.lowLatencyMode = false;
           if (state.customUserAgent === undefined) state.customUserAgent = '';
           if (state.customReferer === undefined) state.customReferer = '';
+        }
+        if (version < 4) {
+          if (state.bangumiMirror === undefined) state.bangumiMirror = '';
         }
         return state;
       },
@@ -183,6 +195,7 @@ export const useAppStore = create<AppState>()(
         lowLatencyMode: state.lowLatencyMode,
         customUserAgent: state.customUserAgent,
         customReferer: state.customReferer,
+        bangumiMirror: state.bangumiMirror,
       }),
     }
   )

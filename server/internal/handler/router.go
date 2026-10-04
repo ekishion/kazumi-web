@@ -148,6 +148,7 @@ func SetupRouter(h *AppHandler) *gin.Engine {
 			bangumi.GET("/subject/:id", h.getSubjectDetail)
 			bangumi.GET("/subject/:id/characters", h.getSubjectCharacters)
 			bangumi.GET("/search", h.searchBangumi)
+			bangumi.GET("/ping", h.pingBangumiMirror)
 		}
 
 		// 5. 弹弹play 弹幕代理
@@ -411,7 +412,8 @@ func (h *AppHandler) proxySegment(c *gin.Context) {
 
 // Bangumi Handlers
 func (h *AppHandler) getCalendar(c *gin.Context) {
-	data, err := h.bangumiSvc.GetCalendar(c.Request.Context())
+	mirror := c.Query("mirror")
+	data, err := h.bangumiSvc.GetCalendar(c.Request.Context(), mirror)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -421,7 +423,8 @@ func (h *AppHandler) getCalendar(c *gin.Context) {
 
 func (h *AppHandler) getSubjectDetail(c *gin.Context) {
 	id := c.Param("id")
-	data, err := h.bangumiSvc.GetSubjectDetail(c.Request.Context(), id)
+	mirror := c.Query("mirror")
+	data, err := h.bangumiSvc.GetSubjectDetail(c.Request.Context(), id, mirror)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -431,7 +434,8 @@ func (h *AppHandler) getSubjectDetail(c *gin.Context) {
 
 func (h *AppHandler) getSubjectCharacters(c *gin.Context) {
 	id := c.Param("id")
-	data, err := h.bangumiSvc.GetSubjectCharacters(c.Request.Context(), id)
+	mirror := c.Query("mirror")
+	data, err := h.bangumiSvc.GetSubjectCharacters(c.Request.Context(), id, mirror)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -441,12 +445,19 @@ func (h *AppHandler) getSubjectCharacters(c *gin.Context) {
 
 func (h *AppHandler) searchBangumi(c *gin.Context) {
 	keyword := c.Query("keyword")
-	data, err := h.bangumiSvc.SearchSubjects(c.Request.Context(), keyword)
+	mirror := c.Query("mirror")
+	data, err := h.bangumiSvc.SearchSubjects(c.Request.Context(), keyword, mirror)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 	c.JSON(http.StatusOK, data)
+}
+
+func (h *AppHandler) pingBangumiMirror(c *gin.Context) {
+	mirror := c.Query("mirror")
+	result := h.bangumiSvc.PingMirror(c.Request.Context(), mirror)
+	c.JSON(http.StatusOK, result)
 }
 
 // 弹幕 Handlers
