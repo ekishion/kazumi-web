@@ -65,8 +65,8 @@ export const apiService = {
   saveCollect: (item: CollectRecord) => api.post<CollectRecord>('/user/collect', item).then((r) => r.data),
   deleteCollect: (bangumiId: number) => api.delete(`/user/collect/${bangumiId}`).then((r) => r.data),
 
-  // 智能嗅探解析流媒体
-  resolveStream: (url: string, referer = '', ua = '', options?: { refresh?: boolean }) =>
+  // 智能嗅探解析流媒体（可传入 AbortSignal，用于离开页面时中止请求）
+  resolveStream: (url: string, referer = '', ua = '', options?: { refresh?: boolean; signal?: AbortSignal }) =>
     api
       .get<ResolvedStream>('/stream/resolve', {
         params: {
@@ -75,6 +75,7 @@ export const apiService = {
           ua,
           ...(options?.refresh ? { refresh: '1' } : {}),
         },
+        signal: options?.signal,
       })
       .then((r) => r.data),
 };

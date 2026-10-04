@@ -68,3 +68,18 @@ Web/
 ## 开源协议
 
 本项目遵循 [GNU General Public License v3.0 (GPL-3.0)](LICENSE) 开源协议，与原版 [Kazumi](https://github.com/Predidit/Kazumi) 保持一致。
+
+---
+
+## 致谢
+
+本项目的实现离不开以下项目与服务，在此一并感谢：
+
+- [Kazumi](https://github.com/Predidit/Kazumi)：本项目的设计来源。感谢 [Predidit](https://github.com/Predidit) 及各位贡献者的工作。
+- [弹弹play](https://www.dandanplay.com/)：提供开放弹幕库与番剧元数据接口。
+- [Bangumi](https://bangumi.tv/)：提供番剧条目、日历与人物数据 API。
+- [Gin](https://github.com/gin-gonic/gin)、[GORM](https://gorm.io/)、[SQLite](https://www.sqlite.org/)：后端 Web 框架、ORM 与嵌入式数据库。
+- [React](https://react.dev/)、[Vite](https://vitejs.dev/)、[MUI](https://mui.com/)：前端框架、构建工具与 Material 组件体系。
+- [ArtPlayer](https://github.com/zhw2590582/ArtPlayer)、[hls.js](https://github.com/video-dev/hls.js)：视频播放器内核、HLS 支持与弹幕渲染。
+- [Material Design 3](https://m3.material.io/)：界面配色、形状与动效规范来源。
+

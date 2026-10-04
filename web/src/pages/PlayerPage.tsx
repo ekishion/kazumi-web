@@ -208,6 +208,8 @@ export const PlayerPage: React.FC = () => {
   const [switchingSource, setSwitchingSource] = useState(false);
   const isAutoSwitching = useRef(false);
   const sigRetryDone = useRef(false);
+  // 中止嗅探请求：退出播放页时取消仍在进行的解析
+  const resolveAbortRef = useRef<AbortController | null>(null);
 
   // 番剧详情数据（用于播放器下方元数据展示）
   const [bangumiDetail, setBangumiDetail] = useState<any | null>(null);
@@ -317,6 +319,12 @@ export const PlayerPage: React.FC = () => {
       }
     }
 
+    // 中止上一次仍在进行的嗅探请求
+    resolveAbortRef.current?.abort();
+    const abortController = new AbortController();
+    resolveAbortRef.current = abortController;
+    const isAborted = () => abortController.signal.aborted;
+
     setIsResolving(true);
     setResolvedStream(null);
     setPlaybackError(null);
@@ -333,8 +341,10 @@ export const PlayerPage: React.FC = () => {
     apiService
       .resolveStream(currentEpisode.url, effectiveReferer, effectiveUA, {
         refresh: options?.refresh,
+        signal: abortController.signal,
       })
       .then((data) => {
+        if (isAborted()) return;
         setResolvedStream(data);
         if (currentSrc) {
           setEpisodePlaybackState(currentEpisode.url, {
@@ -371,6 +381,10 @@ export const PlayerPage: React.FC = () => {
         }
       })
       .catch((err) => {
+        // 主动中止（切集 / 退出页面）不视为错误，静默忽略
+        if (isAborted() || err.code === 'ERR_CANCELED' || err.name === 'CanceledError' || err.name === 'AbortError') {
+          return;
+        }
         console.warn('解析真实视频流失败:', err);
         const classified = classifyPlaybackError({
           status: err.response?.status,
@@ -378,6 +392,7 @@ export const PlayerPage: React.FC = () => {
           upstreamStatus: err.response?.headers?.['x-kazumi-upstream-status'],
           details: err.message,
         });
+        if (isAborted()) return;
         setPlaybackError(classified);
         if (currentSrc) {
           setSourceStatuses((prev) => ({
@@ -389,8 +404,19 @@ export const PlayerPage: React.FC = () => {
           triggerAutoFailover(classified);
         }
       })
-      .finally(() => setIsResolving(false));
+      .finally(() => {
+        if (!isAborted()) setIsResolving(false);
+      });
   };
+
+  // 卸载（退出播放页）时中止仍在进行的嗅探与自动换源
+  useEffect(() => {
+    return () => {
+      resolveAbortRef.current?.abort();
+      resolveAbortRef.current = null;
+      isAutoSwitching.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     doResolveStream();
